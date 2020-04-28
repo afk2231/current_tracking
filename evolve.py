@@ -2,6 +2,8 @@ import numpy as np
 from pyscf import fci
 import harmonic
 
+pi = np.pi
+
 
 def ham1(lat, h, current_time, cycles):
     if lat.field == 0.:
@@ -24,18 +26,14 @@ def f(lat, h1, psi):
     h1_r = h1.real
     h1_i = h1.imag
     # H|psi>=(h1+h2)|psi>=(h1_r+ih1_i+h2)|psi>=(h1_r+ih1_i+h2)|psi_r>+i(h1_r+ih1_i+h2)|psi_i>
-    pro = one_elec(lat, h1_r, psi_r) + 1.j * one_elec(lat, h1_i, psi_r, False) \
-          + 1.j * one_elec(lat, h1_r, psi_i) - one_elec(lat, h1_i, psi_i, False) + two_elec(lat, psi_r, psi_i)
+    pro = one_elec(lat, h1_r, psi_r) + 1.j * one_elec(lat, h1_i, psi_r, False) + 1.j * one_elec(lat, h1_r, psi_i) - \
+          one_elec(lat, h1_i, psi_i, False) + two_elec(lat, psi_r, psi_i)
     return pro
 
 
-
-def integrate_f(current_time,  psi, lat, cycles, h):
+def integrate_f(current_time, psi, lat, cycles, h):
     ht = ham1(lat, h, current_time, cycles)
     return -1j * f(lat, ht, psi)
-
-
-
 
 
 def one_elec(lat, h1, psi, sym=True):
@@ -43,6 +41,7 @@ def one_elec(lat, h1, psi, sym=True):
         return fci.direct_spin1.contract_1e(h1, psi, lat.nsites, (lat.nup, lat.ndown))
     else:
         return fci.direct_nosym.contract_1e(h1, psi, lat.nsites, (lat.nup, lat.ndown))
+
 
 
 def two_elec(lat, psi_r, psi_i):
@@ -75,7 +74,7 @@ def RK1(lat, h, delta, current_time, psi, cycles):
     return psi + k
 
 
-def phi_J_track(lat, current_time, J_reconstruct,neighbour, psi):
+def phi_J_track(lat, current_time, J_reconstruct, neighbour):
     # Import the current function
     # if current_time <self.delta:
     #     current=self.J_reconstruct(0)
@@ -84,35 +83,50 @@ def phi_J_track(lat, current_time, J_reconstruct,neighbour, psi):
     current = J_reconstruct(current_time)
     # Arrange psi to calculate the nearest neighbour expectations
     D = neighbour
-    angle = np.angle(D)
     mag = np.abs(D)
     scalefactor = 2 * lat.a * lat.t * mag
     # assert np.abs(current)/scalefactor <=1, ('Current too large to reproduce, ration is %s' % np.abs(current/scalefactor))
-    arg = -current / (2 * lat.a * lat.t * mag)
-    phi = np.arcsin(arg + 0j) + angle
+    arg = -current / scalefactor
+    phi = np.arcsin(arg + 0j)
     # phi = np.arcsin(arg + 0j)
     return phi.real
 
 
-def phi_J_track_unwravel(lat, current_time, J_reconstruct,neighbour, prevangle, psi):
-    # Import the current function
-    # if current_time <self.delta:
-    #     current=self.J_reconstruct(0)
-    # else:
-    #     current = self.J_reconstruct(current_time-self.delta)
-    current = J_reconstruct(current_time)
-    # Arrange psi to calculate the nearest neighbour expectations
+def phi_phi_track(lat, J, neighbour):
     D = neighbour
-    angle = np.angle(D)
     mag = np.abs(D)
     scalefactor = 2 * lat.a * lat.t * mag
-    # assert np.abs(current)/scalefactor <=1, ('Current too large to reproduce, ration is %s' % np.abs(current/scalefactor))
-    arg = -current / (2 * lat.a * lat.t * mag)
-    phi = np.arcsin(arg + 0j) + angle
-    # phi = np.arcsin(arg + 0j)
+    arg = - J / scalefactor
+    phi = np.arcsin(arg + 0j)
     return phi.real
 
-def phi_reconstruct(lat, J_reconstruct,neighbour):
+
+def angle_fix(D, prevD):
+    theta = np.angle(D)
+    ptheta = np.angle(prevD)
+    difftheta = theta - ptheta
+
+    if difftheta > 1.9 * pi:
+        theta += -2 * pi
+    elif difftheta < -1.9 * pi:
+        theta += 2 * pi
+
+    return theta
+
+
+def phi_J_track_unwravelalt(lat, current_time, J_function, D):
+    # calculate J at current time
+    J_recon = J_function(current_time)
+
+    # calculate phi at current time from J
+    scalefactor = 2 * lat.a * lat.t * np.abs(D)
+    arg = -J_recon / scalefactor
+    phi = np.arcsin(arg + 0j)
+
+    return phi
+
+
+def phi_reconstruct(lat, J_reconstruct, neighbour):
     # Import the current function
     # if current_time <self.delta:
     #     current=self.J_reconstruct(0)
@@ -131,30 +145,28 @@ def phi_reconstruct(lat, J_reconstruct,neighbour):
     return phi.real
 
 
-def phi_D_track(lat, current_time, D_reconstruct,two_body_expect, psi):
+def phi_D_track(lat, current_time, D_reconstruct, two_body_expect, psi):
     # Import the current function
     # if current_time <self.delta:
     #     current=self.J_reconstruct(0)
     # else:
     #     current = self.J_reconstruct(current_time-self.delta)
-    current=0
+    current = 0
     # current = D_reconstruct(current_time)
     # if np.abs(current) < 1e-5:
     #     current =0
     # Arrange psi to calculate the nearest neighbour expectations
-    D = -two_body_expect/lat.nsites
+    D = -two_body_expect / lat.nsites
     angle = np.angle(D)
     mag = np.abs(D)
-    scalefactor=2*lat.t*np.abs(D_reconstruct(0))
-    arg = -current/ (2 * lat.t * mag)
+    arg = -current / (2 * lat.t * mag)
     phi = np.arcsin(arg + 0j) + angle
     # phi = np.arcsin(arg + 0j)
     return phi.real
 
 
-
-def ham_J_track(lat, h, current_time, J_reconstruct,neighbour, psi):
-    phi=phi_J_track(lat, current_time, J_reconstruct,neighbour, psi)
+def ham_J_track(lat, h, current_time, J_reconstruct, neighbour, psi):
+    phi = phi_J_track(lat, current_time, J_reconstruct, neighbour)
     h_forwards = np.triu(h)
     h_forwards[0, -1] = 0.0
     h_forwards[-1, 0] = h[-1, 0]
@@ -164,22 +176,36 @@ def ham_J_track(lat, h, current_time, J_reconstruct,neighbour, psi):
     return np.exp(1.j * phi) * h_forwards + np.exp(-1.j * phi) * h_backwards
 
 
-def integrate_f_track_J(current_time,  psi, lat, h, J_reconstruct):
-    ht = ham_J_track_ZVODE(current_time,psi,J_reconstruct,lat,h)
+def ham_J_cutfreq_RK4(current_time, phi_cut, h):
+    phi = phi_cut(current_time)
+    h_forwards = np.triu(h)
+    h_forwards[0, -1] = 0.0
+    h_forwards[-1, 0] = h[-1, 0]
+    h_backwards = np.tril(h)
+    h_backwards[-1, 0] = 0.0
+    h_backwards[0, -1] = h[0, -1]
+    return np.exp(1.j * phi) * h_forwards + np.exp(-1.j * phi) * h_backwards
+
+
+def integrate_f_track_J(current_time, psi, lat, h, J_reconstruct):
+    ht = ham_J_track_ZVODE(current_time, psi, J_reconstruct, lat, h)
     return -1j * f(lat, ht, psi)
 
-def integrate_f_cutfreqs(current_time,  psi, lat, h, phi_cut):
-    ht = ham_J_cutfreqs_ZVODE(current_time,phi_cut,h)
+
+def integrate_f_cutfreqs(current_time, psi, lat, h, phi_cut):
+    ht = ham_J_cutfreqs_ZVODE(current_time, phi_cut, h)
     return -1j * f(lat, ht, psi)
 
-def integrate_f_track_D(current_time,  psi, lat, h, J_reconstruct):
-    ht = ham_D_track_ZVODE(current_time,psi,J_reconstruct,lat,h)
+
+def integrate_f_track_D(current_time, psi, lat, h, J_reconstruct):
+    ht = ham_D_track_ZVODE(current_time, psi, J_reconstruct, lat, h)
     return -1j * f(lat, ht, psi)
 
-def ham_J_track_ZVODE(current_time,psi, J_reconstruct, lat, h):
+
+def ham_J_track_ZVODE(current_time, psi, J_reconstruct, lat, h):
     current = J_reconstruct(current_time)
     # Arrange psi to calculate the nearest neighbour expectations
-    D = harmonic.nearest_neighbour_new(lat,h,psi)
+    D = harmonic.nearest_neighbour_new(lat, h, psi)
     angle = np.angle(D)
     mag = np.abs(D)
     scalefactor = 2 * lat.a * lat.t * mag
@@ -206,14 +232,13 @@ def ham_J_cutfreqs_ZVODE(current_time, phi_cut, h):
     return np.exp(1.j * phi) * h_forwards + np.exp(-1.j * phi) * h_backwards
 
 
-
-def ham_D_track_ZVODE(current_time, psi, D_reconstruct,lat, h):
+def ham_D_track_ZVODE(current_time, psi, D_reconstruct, lat, h):
     # current = D_reconstruct(current_time)
     # if current_time < 0.2/lat.freq:
     #     current = 0
-    current=0
+    current = 0
     # Arrange psi to calculate the nearest neighbour expectations
-    D = -harmonic.two_body_old (lat,psi)/ lat.nsites
+    D = -harmonic.two_body_old(lat, psi) / lat.nsites
     angle = np.angle(D)
     mag = np.abs(D)
     scalefactor = 2 * lat.t * np.abs(D_reconstruct(0))
@@ -229,22 +254,33 @@ def ham_D_track_ZVODE(current_time, psi, D_reconstruct,lat, h):
 
 
 def RK4_J_track(lat, h, delta, current_time, J_reconstruct, neighbour, psi):
-    ht = ham_J_track(lat, h, current_time, J_reconstruct,neighbour, psi)
+    ht = ham_J_track(lat, h, current_time, J_reconstruct, neighbour, psi)
     k1 = -1.j * delta * f(lat, ht, psi)
-    ht = ham_J_track(lat, h, current_time + 0.5 * delta,J_reconstruct,neighbour, psi)
+    ht = ham_J_track(lat, h, current_time + 0.5 * delta, J_reconstruct, neighbour, psi)
     k2 = -1.j * delta * f(lat, ht, psi + 0.5 * k1)
     k3 = -1.j * delta * f(lat, ht, psi + 0.5 * k2)
-    ht = ham_J_track(lat, h, current_time + delta, J_reconstruct,neighbour, psi)
+    ht = ham_J_track(lat, h, current_time + delta, J_reconstruct, neighbour, psi)
     k4 = -1.j * delta * f(lat, ht, psi + k3)
     return psi + (k1 + 2. * k2 + 2. * k3 + k4) / 6.
+
+
+def RK4_J_cutfreqs_RK4(lat, h, current_time, delta, phi_cut, psi):
+    ht = ham_J_cutfreq_RK4(current_time, phi_cut, h)
+    k1 = -1.j * delta * f(lat, ht, psi)
+    ht = ham_J_cutfreq_RK4(current_time + 0.5, phi_cut, h)
+    k2 = -1.j * delta * f(lat, ht, psi + 0.5 * k1)
+    k3 = -1.j * delta * f(lat, ht, psi + 0.5 * k2)
+    ht = ham_J_cutfreq_RK4(current_time, phi_cut, h)
+    k4 = -1.j * delta * f(lat, ht, psi + k3)
+    return psi + (k1 + 2. * k2 + 2. * k3 + k4) / 6.
+
 
 def RK4_D_track(lat, h, delta, current_time, J_reconstruct, neighbour, psi):
-    ht = ham_D_track(lat, h, current_time, J_reconstruct,neighbour, psi)
+    ht = ham_D_track(lat, h, current_time, J_reconstruct, neighbour, psi)
     k1 = -1.j * delta * f(lat, ht, psi)
-    ht = ham_D_track(lat, h, current_time + 0.5 * delta,J_reconstruct,neighbour, psi)
+    ht = ham_D_track(lat, h, current_time + 0.5 * delta, J_reconstruct, neighbour, psi)
     k2 = -1.j * delta * f(lat, ht, psi + 0.5 * k1)
     k3 = -1.j * delta * f(lat, ht, psi + 0.5 * k2)
-    ht = ham_D_track(lat, h, current_time + delta, J_reconstruct,neighbour, psi)
+    ht = ham_D_track(lat, h, current_time + delta, J_reconstruct, neighbour, psi)
     k4 = -1.j * delta * f(lat, ht, psi + k3)
     return psi + (k1 + 2. * k2 + 2. * k3 + k4) / 6.
-

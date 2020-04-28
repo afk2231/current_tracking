@@ -1,7 +1,9 @@
 import numpy as np
 import hub_lats as hub
 import des_cre as dc
+import observable as ob
 from pyscf import fci
+import matplotlib.pyplot as plt
 
 class hhg(hub.Lattice):
     def __init__(self,field,nup,ndown,nx,ny,U,t=0.52,F0=10.,a=4.,lat_type='square',bc=None,nnn=False):
@@ -9,7 +11,7 @@ class hhg(hub.Lattice):
         self.nup=nup
         self.ndown=ndown
         self.ne=nup+ndown
-        #input units: THz (field), eV (t, U), MV/cm (peak amplitude), Angstroms (lattice cst) 
+        #input units: THz (field), eV (t, U), MV/cm (peak amplitude), Angstroms (lattice cst)
         #converts to a'.u, which are atomic units but with energy normalised to t, so
         #Note, hbar=e=m_e=1/4pi*ep_0=1, and c=1/alpha=137
         factor=1./(t*0.036749323)
@@ -101,14 +103,25 @@ def hubbard(lat):
     e, fcivec = cisolver.kernel(h1, h2, lat.nsites, (lat.nup,lat.ndown))
     return (e,fcivec.reshape(-1))
 
+def hubbard_alt(lat, phi0 = 0.0):
+    h1 = ob.hamiltonian(hub.create_1e_ham(lat, True), phi0)
+    plt.subplot(211)
+    plt.imshow(h1.real)
+    plt.subplot(212)
+    plt.imshow(h1.imag)
+    plt.show()
+    h2 = ham2(lat)
+    cisolver = fci.direct_spin1.FCI()
+    e, fcivec = cisolver.kernel(h1, h2, lat.nsites, (lat.nup,lat.ndown))
+    return (e,fcivec.reshape(-1))
+
 def progress(total, current):
-    if total<10:
+    if total<20:
         print("Simulation Progress: " + str(round(100*current/total)) + "%")
-    elif current%int(total/10)==0:
+    elif current%int(total/20)==0:
         print("Simulation Progress: " + str(round(100*current/total)) + "%")
     return
 
 
 # calculates inner products _after_ adding two electrons
-
 
